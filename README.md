@@ -120,7 +120,7 @@ Inspired by Google NotebookLM
 
 📞 Contact
 
-For questions or feedback, reach out at [your-email@example.com
+For questions or feedback, reach out at [jazlannaik4@gmail.com
 ] or open an issue if you have access.
 
 Happy coding! 🚀
