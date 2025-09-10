@@ -18,33 +18,26 @@ const configuration = new Configuration({
 });
 const openai = new OpenAIApi(configuration);
 
-// Store PDF text and embeddings in memory (for demo)
 let pdfData = {
     textByPage: [],
-    embeddings: [], // vectors for each page or chunk
+    embeddings: [], 
     filePath: null,
 };
 
-// 1. Upload PDF endpoint
-// File: backend/index.js
 app.post('/upload-pdf', upload.single('pdf'), async (req, res) => {
     try {
         const filePath = req.file.path;
         const dataBuffer = fs.readFileSync(filePath);
 
-        // ✅ Parse entire PDF into one big string
         const data = await pdfParse(dataBuffer);
         const fullText = data.text;
 
-        // ✅ Split text into pages using form-feed character (\f), which separates pages in many PDFs
         const textByPage = fullText.split('\f').map(p => p.trim()).filter(Boolean);
 
         console.log('Pages found:', textByPage.length);
 
-        // ✅ Save text and file info in memory
         pdfData = { textByPage, embeddings: [], filePath };
 
-        // ✅ Generate embedding for each non-empty page
         for (let i = 0; i < textByPage.length; i++) {
             const pageText = textByPage[i];
 
@@ -66,12 +59,14 @@ app.post('/upload-pdf', upload.single('pdf'), async (req, res) => {
         res.json({ message: 'PDF uploaded and processed', pages: textByPage.length });
     } catch (error) {
         console.error('❌ Error during /upload-pdf:', error?.response?.data || error.message);
-        res.status(500).json({ error: 'Failed to process PDF' });
+        if (error.response?.data?.error?.code === 'insufficient_quota') {
+            res.status(429).json({ error: 'Rate limit or quota exceeded' });
+        } else {
+            res.status(500).json({ error: 'Failed to process PDF' });
+        }
     }
 });
 
-
-// Helper cosine similarity function
 function cosineSimilarity(vecA, vecB) {
     const dotProduct = vecA.reduce((sum, a, idx) => sum + a * vecB[idx], 0);
     const magA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0));
@@ -79,7 +74,6 @@ function cosineSimilarity(vecA, vecB) {
     return dotProduct / (magA * magB);
 }
 
-// 2. Chat endpoint - accepts user question and returns answer with citation
 app.post('/chat', async (req, res) => {
     try {
         const { question } = req.body;
@@ -87,14 +81,12 @@ app.post('/chat', async (req, res) => {
             return res.status(400).json({ error: 'No PDF uploaded yet' });
         }
 
-        // Embed user question
         const embeddingResponse = await openai.createEmbedding({
             model: 'text-embedding-ada-002',
             input: question,
         });
         const questionEmbedding = embeddingResponse.data.data[0].embedding;
 
-        // Find best matching page by cosine similarity
         let bestScore = -Infinity;
         let bestPageIndex = 0;
         for (let i = 0; i < pdfData.embeddings.length; i++) {
@@ -105,7 +97,6 @@ app.post('/chat', async (req, res) => {
             }
         }
 
-        // Prepare prompt with context from best page
         const context = pdfData.textByPage[bestPageIndex];
         const prompt = `
 You are an assistant that answers questions based on the following PDF content:
@@ -118,7 +109,6 @@ Question: ${question}
 Answer with relevant info and provide a citation to the PDF page number in the format: [Page ${bestPageIndex + 1}].
     `;
 
-        // Call GPT completion
         const completion = await openai.createChatCompletion({
             model: 'gpt-4',
             messages: [{ role: 'user', content: prompt }],
@@ -132,12 +122,16 @@ Answer with relevant info and provide a citation to the PDF page number in the f
             citationPage: bestPageIndex + 1,
         });
     } catch (error) {
-        console.error(error);
+        console.error('❌ Error during /chat:', error?.response?.data || error.message);
+
+        if (error.response?.data?.error?.code === 'insufficient_quota') {
+            return res.status(429).json({ error: 'Rate limit or quota exceeded' });
+        }
+
         res.status(500).json({ error: 'Chat failed' });
     }
 });
 
-// Serve uploaded PDFs
 app.use('/pdfs', express.static(path.join(__dirname, 'uploads')));
 
 const PORT = process.env.PORT || 4000;
