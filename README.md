@@ -37,7 +37,7 @@ Deployment: Easily deployable on Netlify, Render, Vercel, or similar platforms
 📦 Getting Started
 Prerequisites
 
-Node.js & npm/yarn installed
+Node.js & npm
 
 OpenAI API key (or your AI service key)
 
@@ -78,7 +78,7 @@ cd frontend
 npm start
 
 
-Open your browser and visit http://localhost:3000 (or the port your frontend runs on).
+Open your browser and visit http://localhost:5173 (or the port your frontend runs on).
 
 📚 Usage
 
